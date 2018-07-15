@@ -262,6 +262,7 @@ func (rsc *ReplicaSetController) addPod(obj interface{}) {
 		return
 	}
 
+
 	// If it has a ControllerRef, that's all that matters.
 	if controllerRef := metav1.GetControllerOf(pod); controllerRef != nil {
 		rs := rsc.resolveControllerRef(pod.Namespace, controllerRef)
@@ -398,6 +399,7 @@ func (rsc *ReplicaSetController) deletePod(obj interface{}) {
 	if rs == nil {
 		return
 	}
+
 	rsKey, err := controller.KeyFunc(rs)
 	if err != nil {
 		return
@@ -493,7 +495,25 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 				BlockOwnerDeletion: boolPtr(true),
 				Controller:         boolPtr(true),
 			}
-			err := rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+
+			var err error
+			// Triggersafe: Consume a config map on delete if one exists
+			cm, has := rsc.configMapForPodSchedule(rs, "Create")
+			if has {
+				cmCopy := cm.DeepCopy()
+				cmCopy.Data["Status"] = "Consumed"
+				rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+
+				// Specify a node to create on if required
+				if node, ok := cm.Data["Host"]; ok {
+					err = rsc.podControl.CreatePodsOnNode(node, rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+				} else {
+					err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+				}
+			} else {
+				err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+			}
+			
 			if err != nil && errors.IsTimeout(err) {
 				// Pod is created but its initialization has timed out.
 				// If the initialization is successful eventually, the
@@ -541,6 +561,15 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 		for _, pod := range podsToDelete {
 			go func(targetPod *v1.Pod) {
 				defer wg.Done()
+
+				// Triggersafe: Consume a config map on delete if one exists
+				cm, has := rsc.configMapForPodSchedule(rs, "Delete")
+				cmCopy := cm.DeepCopy()
+				if has {
+					cmCopy.Data["Status"] = "Consumed"
+					rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+				}
+
 				if err := rsc.podControl.DeletePod(rs.Namespace, targetPod.Name, rs); err != nil {
 					// Decrement the expected number of deletes because the informer won't observe this deletion
 					podKey := controller.PodKey(targetPod)
@@ -656,6 +685,49 @@ func (rsc *ReplicaSetController) claimPods(rs *extensions.ReplicaSet, selector l
 	})
 	cm := controller.NewPodControllerRefManager(rsc.podControl, rs, selector, rsc.GroupVersionKind, canAdoptFunc)
 	return cm.ClaimPods(filteredPods)
+}
+
+func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaSet, action string) (v1.ConfigMap, bool) {
+	allConfigs, err := rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return v1.ConfigMap{}, false
+	}
+
+	controllerRef := metav1.GetControllerOf(rs)
+	deploymentRef, err := rsc.kubeClient.ExtensionsV1beta1().Deployments(rs.Namespace).Get(controllerRef.Name, metav1.GetOptions{})
+	if err != nil {
+		return v1.ConfigMap{}, false
+	}
+
+
+	for i, configMap := range allConfigs.Items {
+		if v, ok := configMap.Data["DeploymentName"]; ok {
+			if v != deploymentRef.Name {
+				continue
+			}
+		} else {
+			continue
+		}
+
+		if v, ok := configMap.Data["Action"]; ok {
+			if v != action {
+				continue
+			}
+		} else {
+			continue
+		}
+
+		if v, ok := configMap.Data["Status"]; ok {
+			if v != "Consumed" {
+				continue
+			}
+		} else {
+			continue
+		}
+
+		return configMap, true
+	}
+	return v1.ConfigMap{}, false
 }
 
 // slowStartBatch tries to call the provided function a total of 'count' times,
