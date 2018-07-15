@@ -700,7 +700,7 @@ func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaS
 	}
 
 
-	for i, configMap := range allConfigs.Items {
+	for _, configMap := range allConfigs.Items {
 		if v, ok := configMap.Data["DeploymentName"]; ok {
 			if v != deploymentRef.Name {
 				continue
