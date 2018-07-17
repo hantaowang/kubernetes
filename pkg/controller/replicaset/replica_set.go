@@ -696,6 +696,7 @@ func (rsc *ReplicaSetController) claimPods(rs *extensions.ReplicaSet, selector l
 func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaSet, action string) (v1.ConfigMap, bool) {
 	allConfigs, err := rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).List(metav1.ListOptions{})
 	if err != nil {
+		glog.V(2).Infof("Replicaset %s error: %s", rs.Name, err.Error())
 		return v1.ConfigMap{}, false
 	}
 	configNames := ""
@@ -708,6 +709,7 @@ func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaS
 	controllerRef := metav1.GetControllerOf(rs)
 	deploymentRef, err := rsc.kubeClient.ExtensionsV1beta1().Deployments(rs.Namespace).Get(controllerRef.Name, metav1.GetOptions{})
 	if err != nil {
+		glog.V(2).Infof("Replicaset %s error: %s", rs.Name, err.Error())
 		return v1.ConfigMap{}, false
 	}
 	glog.V(2).Infof("Replicaset %s has deployment: %s", rs.Name, deploymentRef.Name)
