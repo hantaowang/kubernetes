@@ -740,7 +740,7 @@ func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaS
 		}
 
 		if v, ok := configMap.Data["Status"]; ok {
-			if v != "Consumed" {
+			if v == "Consumed" {
 				continue
 			}
 		} else {
