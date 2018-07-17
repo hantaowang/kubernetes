@@ -248,6 +248,8 @@ func buildControllerRoles() ([]rbac.ClusterRole, []rbac.ClusterRoleBinding) {
 			rbac.NewRule("update").Groups(appsGroup, extensionsGroup).Resources("replicasets/status").RuleOrDie(),
 			rbac.NewRule("update").Groups(appsGroup, extensionsGroup).Resources("replicasets/finalizers").RuleOrDie(),
 			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(legacyGroup).Resources("pods").RuleOrDie(),
+			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(legacyGroup).Resources("configmaps").RuleOrDie(),
+			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(extensionsGroup, appsGroup).Resources("deployments").RuleOrDie(),
 			eventsRule(),
 		},
 	})
@@ -256,6 +258,7 @@ func buildControllerRoles() ([]rbac.ClusterRole, []rbac.ClusterRoleBinding) {
 		Rules: []rbac.PolicyRule{
 			// 1.0 controllers needed get, update, so without these old controllers break on new servers
 			rbac.NewRule("get", "list", "watch", "update").Groups(legacyGroup).Resources("replicationcontrollers").RuleOrDie(),
+
 			rbac.NewRule("update").Groups(legacyGroup).Resources("replicationcontrollers/status").RuleOrDie(),
 			rbac.NewRule("update").Groups(legacyGroup).Resources("replicationcontrollers/finalizers").RuleOrDie(),
 			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(legacyGroup).Resources("pods").RuleOrDie(),
