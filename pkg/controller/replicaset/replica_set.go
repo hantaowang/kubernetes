@@ -103,6 +103,8 @@ type ReplicaSetController struct {
 
 	// Controllers that need to be synced
 	queue workqueue.RateLimitingInterface
+
+	lock sync.Mutex
 }
 
 // NewReplicaSetController configures a replica set controller with the specified event recorder
@@ -498,11 +500,13 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 
 			var err error
 			// Triggersafe: Consume a config map on delete if one exists
+			rsc.lock.Lock()
 			cm, has := rsc.configMapForPodSchedule(rs, "Create")
 			if has {
 				cmCopy := cm.DeepCopy()
 				cmCopy.Data["Status"] = "Consumed"
 				rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+				rsc.lock.Unlock()
 				glog.V(2).Infof("Replicaset %s has consumed configmap %s", rs.Name, cmCopy.Name)
 
 				// Specify a node to create on if required
@@ -513,6 +517,7 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 					err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
 				}
 			} else {
+				rsc.lock.Unlock()
 				err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
 				glog.V(2).Infof("Replicaset %s has no configmap", rs.Name)
 			}
@@ -566,13 +571,16 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 				defer wg.Done()
 
 				// Triggersafe: Consume a config map on delete if one exists
+				rsc.lock.Lock()
 				cm, has := rsc.configMapForPodSchedule(rs, "Delete")
 				cmCopy := cm.DeepCopy()
 				if has {
 					cmCopy.Data["Status"] = "Consumed"
 					rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+					rsc.lock.Unlock()
 					glog.V(2).Infof("Replicaset %s has consumed configmap %s", rs.Name, cmCopy.Name)
 				} else {
+					rsc.lock.Unlock()
 					glog.V(2).Infof("Replicaset %s has no configmap", rs.Name)
 				}
 
