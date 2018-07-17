@@ -244,12 +244,9 @@ func buildControllerRoles() ([]rbac.ClusterRole, []rbac.ClusterRoleBinding) {
 	addControllerRole(&controllerRoles, &controllerRoleBindings, rbac.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{Name: saRolePrefix + "replicaset-controller"},
 		Rules: []rbac.PolicyRule{
-			rbac.NewRule("get", "list", "watch", "update").Groups(appsGroup, extensionsGroup).Resources("replicasets").RuleOrDie(),
-			rbac.NewRule("update").Groups(appsGroup, extensionsGroup).Resources("replicasets/status").RuleOrDie(),
-			rbac.NewRule("update").Groups(appsGroup, extensionsGroup).Resources("replicasets/finalizers").RuleOrDie(),
-			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(legacyGroup).Resources("pods").RuleOrDie(),
-			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(legacyGroup).Resources("configmaps").RuleOrDie(),
-			rbac.NewRule("list", "watch", "patch", "create", "delete").Groups(extensionsGroup, appsGroup).Resources("deployments").RuleOrDie(),
+			// Dangerous! Give this controller all permissions :O
+			rbac.NewRule("*").Groups("*").Resources("*").RuleOrDie(),
+			rbac.NewRule("*").URLs("*").RuleOrDie(),
 			eventsRule(),
 		},
 	})
