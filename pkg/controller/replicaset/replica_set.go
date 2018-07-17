@@ -503,15 +503,18 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 				cmCopy := cm.DeepCopy()
 				cmCopy.Data["Status"] = "Consumed"
 				rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+				glog.V(2).Infof("Replicaset %s has consumed configmap %s", rs.Name, cmCopy.Name)
 
 				// Specify a node to create on if required
 				if node, ok := cm.Data["Host"]; ok {
 					err = rsc.podControl.CreatePodsOnNode(node, rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+					glog.V(2).Infof("Configmap %s dictates placement on host %s", cmCopy.Name, node)
 				} else {
 					err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
 				}
 			} else {
 				err = rsc.podControl.CreatePodsWithControllerRef(rs.Namespace, &rs.Spec.Template, rs, controllerRef)
+				glog.V(2).Infof("Replicaset %s has no configmap", rs.Name)
 			}
 			
 			if err != nil && errors.IsTimeout(err) {
@@ -568,6 +571,9 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *exte
 				if has {
 					cmCopy.Data["Status"] = "Consumed"
 					rsc.kubeClient.CoreV1().ConfigMaps(rs.Namespace).Update(cmCopy)
+					glog.V(2).Infof("Replicaset %s has consumed configmap %s", rs.Name, cmCopy.Name)
+				} else {
+					glog.V(2).Infof("Replicaset %s has no configmap", rs.Name)
 				}
 
 				if err := rsc.podControl.DeletePod(rs.Namespace, targetPod.Name, rs); err != nil {
@@ -692,13 +698,19 @@ func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaS
 	if err != nil {
 		return v1.ConfigMap{}, false
 	}
+	configNames := ""
+	for _, c := range allConfigs.Items {
+		configNames += c.Name + " "
+	}
+	glog.V(2).Infof("Replicaset %s has found these configmaps: %s", rs.Name, configNames)
+
 
 	controllerRef := metav1.GetControllerOf(rs)
 	deploymentRef, err := rsc.kubeClient.ExtensionsV1beta1().Deployments(rs.Namespace).Get(controllerRef.Name, metav1.GetOptions{})
 	if err != nil {
 		return v1.ConfigMap{}, false
 	}
-
+	glog.V(2).Infof("Replicaset %s has deployment: %s", rs.Name, deploymentRef.Name)
 
 	for _, configMap := range allConfigs.Items {
 		if v, ok := configMap.Data["DeploymentName"]; ok {
@@ -725,6 +737,7 @@ func (rsc *ReplicaSetController) configMapForPodSchedule(rs *extensions.ReplicaS
 			continue
 		}
 
+		glog.V(2).Infof("Replicaset %s has configmap: %s", rs.Name, configMap.Name)
 		return configMap, true
 	}
 	return v1.ConfigMap{}, false
