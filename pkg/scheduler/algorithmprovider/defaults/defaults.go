@@ -148,6 +148,9 @@ func defaultPredicates() sets.String {
 		// Fit is determined by non-conflicting disk volumes.
 		factory.RegisterFitPredicate(predicates.NoDiskConflictPred, predicates.NoDiskConflict),
 
+		// Fit is determined by network resource allocation.
+		factory.RegisterFitPredicate(predicates.NoNetConflictPred, predicates.NoNetConflict),
+
 		// GeneralPredicates are the predicates that are enforced by all Kubernetes components
 		// (e.g. kubelet and all schedulers)
 		factory.RegisterFitPredicate(predicates.GeneralPred, predicates.GeneralPredicates),

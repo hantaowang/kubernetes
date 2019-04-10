@@ -137,6 +137,7 @@ type Resource struct {
 	AllowedPodNumber int
 	// ScalarResources
 	ScalarResources map[v1.ResourceName]int64
+	Network			int64
 }
 
 // NewResource creates a Resource from ResourceList
@@ -195,6 +196,7 @@ func (r *Resource) Clone() *Resource {
 		Memory:           r.Memory,
 		AllowedPodNumber: r.AllowedPodNumber,
 		EphemeralStorage: r.EphemeralStorage,
+		Network:		  r.Network,
 	}
 	if r.ScalarResources != nil {
 		res.ScalarResources = make(map[v1.ResourceName]int64)
@@ -449,6 +451,7 @@ func (n *NodeInfo) AddPod(pod *v1.Pod) {
 	n.requestedResource.MilliCPU += res.MilliCPU
 	n.requestedResource.Memory += res.Memory
 	n.requestedResource.EphemeralStorage += res.EphemeralStorage
+	n.requestedResource.Network += GetNetworkRequest(pod)
 	if n.requestedResource.ScalarResources == nil && len(res.ScalarResources) > 0 {
 		n.requestedResource.ScalarResources = map[v1.ResourceName]int64{}
 	}
@@ -461,7 +464,6 @@ func (n *NodeInfo) AddPod(pod *v1.Pod) {
 	if hasPodAffinityConstraints(pod) {
 		n.podsWithAffinity = append(n.podsWithAffinity, pod)
 	}
-
 	// Consume ports when pods added.
 	n.updateUsedPorts(pod, true)
 
@@ -504,6 +506,7 @@ func (n *NodeInfo) RemovePod(pod *v1.Pod) error {
 			n.requestedResource.MilliCPU -= res.MilliCPU
 			n.requestedResource.Memory -= res.Memory
 			n.requestedResource.EphemeralStorage -= res.EphemeralStorage
+			n.requestedResource.Network -= GetNetworkRequest(pod)
 			if len(res.ScalarResources) > 0 && n.requestedResource.ScalarResources == nil {
 				n.requestedResource.ScalarResources = map[v1.ResourceName]int64{}
 			}

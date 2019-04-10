@@ -114,6 +114,12 @@ const (
 	GCEPDVolumeFilterType = "GCE"
 	// AzureDiskVolumeFilterType defines the filter name for AzureDiskVolumeFilter.
 	AzureDiskVolumeFilterType = "AzureDisk"
+
+
+	// For Network Requests
+	nodeLimitM4Large int64 = 700 * 1000000
+	// NoDiskConflictPred defines the name of predicate NoDiskConflict.
+	NoNetConflictPred = "NoNetConflict"
 )
 
 // IMPORTANT NOTE for predicate developers:
@@ -132,7 +138,7 @@ const (
 var (
 	predicatesOrdering = []string{CheckNodeConditionPred, CheckNodeUnschedulablePred,
 		GeneralPred, HostNamePred, PodFitsHostPortsPred,
-		MatchNodeSelectorPred, PodFitsResourcesPred, NoDiskConflictPred,
+		MatchNodeSelectorPred, PodFitsResourcesPred, NoDiskConflictPred, NoNetConflictPred,
 		PodToleratesNodeTaintsPred, PodToleratesNodeNoExecuteTaintsPred, CheckNodeLabelPresencePred,
 		CheckServiceAffinityPred, MaxEBSVolumeCountPred, MaxGCEPDVolumeCountPred,
 		MaxAzureDiskVolumeCountPred, CheckVolumeBindingPred, NoVolumeZoneConflictPred,
@@ -265,6 +271,21 @@ func isVolumeConflict(volume v1.Volume, pod *v1.Pod) bool {
 	}
 
 	return false
+}
+
+
+// NoNetConflict evaluates if a pod can fit due to the network bandwidth it requests, and those that
+// are already mounted.
+func NoNetConflict(pod *v1.Pod, meta algorithm.PredicateMetadata, nodeInfo *schedulercache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
+	networkRequests := schedulercache.GetNetworkRequest(pod)
+	if networkRequests == 0 {
+		return true, nil, nil
+	}
+    if nodeInfo.RequestedResource().Network + networkRequests > nodeLimitM4Large {
+    	return false, []algorithm.PredicateFailureReason{ErrNetworkConflict}, nil
+	}
+	return true, nil, nil
+
 }
 
 // NoDiskConflict evaluates if a pod can fit due to the volumes it requests, and those that

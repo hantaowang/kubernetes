@@ -16,7 +16,10 @@ limitations under the License.
 
 package cache
 
-import "k8s.io/api/core/v1"
+import (
+	"strconv"
+	"k8s.io/api/core/v1"
+)
 
 // CreateNodeNameToInfoMap obtains a list of pods and pivots that list into a map where the keys are node names
 // and the values are the aggregated information for that node.
@@ -36,4 +39,32 @@ func CreateNodeNameToInfoMap(pods []*v1.Pod, nodes []*v1.Node) map[string]*NodeI
 		nodeNameToInfo[node.Name].SetNode(node)
 	}
 	return nodeNameToInfo
+}
+
+// gets the network request for a pod based on its annotation, or 0 if no such limit exists
+var charToMultiplier = map[string]int64{
+	"K": 1000,
+	"M": 1000000,
+	"G": 1000000000,
+	"T": 1000000000000,
+}
+
+func GetNetworkRequest(pod *v1.Pod) int64 {
+	requestStr, hasRequirement := pod.Annotations["netsys.io/network-bandwidth"]
+	if !hasRequirement {
+		return 0
+	}
+	if len(requestStr) == 0 {
+		return 0
+	}
+	lastChar := requestStr[len(requestStr) - 1]
+	var multiplier int64 = 1
+	if x, ok := charToMultiplier[string(lastChar)]; ok {
+		multiplier = x
+	}
+	val, err := strconv.ParseInt(requestStr[:len(requestStr)-1], 10, 32)
+	if err != nil {
+		return 0
+	}
+	return val * multiplier
 }
