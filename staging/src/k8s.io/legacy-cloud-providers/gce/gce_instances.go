@@ -426,40 +426,34 @@ func (g *Cloud) AddAliasToInstance(nodeName types.NodeName, alias *net.IPNet) er
 // Gets the named instances, returning cloudprovider.InstanceNotFound if any
 // instance is not found
 func (g *Cloud) getInstancesByNames(names []string) ([]*gceInstance, error) {
-	instanceOrErrors, err := g.getInstanceOrErrorsByNames(names)
+	foundInstances, err := g.getFoundInstanceByNames(names)
 	if err != nil {
 		return nil, err
 	}
 	var failed []string
-	var allInstances []*gceInstance
-	for name, entry := range instanceOrErrors {
-		if entry.err == cloudprovider.InstanceNotFound {
+	foundInstanceNames := sets.NewString()
+	for _, instance := range foundInstances {
+		foundInstanceNames.Insert(instance.Name)
+	}
+	for _, name := range names {
+		if !foundInstanceNames.Has(canonicalizeInstanceName(name)) {
 			failed = append(failed, name)
-		} else if entry.err != nil {
-			return nil, entry.err
 		}
-		allInstances = append(allInstances, entry.instance)
 	}
 	if len(failed) > 0 {
 		klog.Errorf("Failed to retrieve instances: %v", failed)
 		return nil, cloudprovider.InstanceNotFound
 	}
-	return allInstances, nil
+	return foundInstances, nil
 }
 
-type instanceOrError struct {
-	instance *gceInstance
-	err      error
-}
-
-// Gets the named instances, returning a map of each name to either the found instance or
-// cloudprovider.InstanceNotFound if the instance is not found
-func (g *Cloud) getInstanceOrErrorsByNames(names []string) (map[string]*instanceOrError, error) {
+// Gets the named instances, returning a list of gceInstances it was able to find from the provided
+// list of names.
+func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) {
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
-	found := map[string]*instanceOrError{}
-	allNamesSet := sets.NewString(names...)
+	found := map[string]*gceInstance{}
 	remaining := len(names)
 	var extraInstancesFound []string
 
@@ -486,46 +480,36 @@ func (g *Cloud) getInstanceOrErrorsByNames(names []string) (map[string]*instance
 				break
 			}
 			if _, ok := found[inst.Name]; !ok {
+				extraInstancesFound = append(extraInstancesFound, inst.Name)
 				continue
 			}
 			if found[inst.Name] != nil {
-				klog.Errorf("Instance name %q was duplicated (in zone %q and %q)\n", inst.Name, zone, found[inst.Name].instance.Zone)
+				klog.Errorf("Instance name %q was duplicated (in zone %q and %q)", inst.Name, zone, found[inst.Name].Zone)
 				continue
 			}
-			if allNamesSet.Has(inst.Name) {
-				found[inst.Name] = &instanceOrError{
-					instance: &gceInstance{
-						Zone:  zone,
-						Name:  inst.Name,
-						ID:    inst.Id,
-						Disks: inst.Disks,
-						Type:  lastComponent(inst.MachineType),
-					},
-					err: nil,
-				}
-				remaining--
-			} else {
-				extraInstancesFound = append(extraInstancesFound, inst.Name)
+			found[inst.Name] = &gceInstance{
+				Zone:  zone,
+				Name:  inst.Name,
+				ID:    inst.Id,
+				Disks: inst.Disks,
+				Type:  lastComponent(inst.MachineType),
 			}
+			remaining--
 		}
 	}
 
 	if len(extraInstancesFound) > 0 {
-		klog.Warningf("Extra instances were listed but then dropped: %v\n", extraInstancesFound)
+		klog.Warningf("Extra instances were listed but then dropped: %v", extraInstancesFound)
 	}
 
-	if remaining > 0 {
-		for name, instOrError := range found {
-			if instOrError == nil {
-				found[name] = &instanceOrError{
-					instance: nil,
-					err:      cloudprovider.InstanceNotFound,
-				}
-			}
+	var ret []*gceInstance
+	for _, instance := range found {
+		if instance != nil {
+			ret = append(ret, instance)
 		}
 	}
 
-	return found, nil
+	return ret, nil
 }
 
 // Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
