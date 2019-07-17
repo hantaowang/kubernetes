@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -455,23 +456,20 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 
 	found := map[string]*gceInstance{}
 	remaining := len(names)
-	var extraInstancesFound []string
+	var escapedInstanceNames []string
 
-	nodeInstancePrefix := g.nodeInstancePrefix
 	for _, name := range names {
 		name = canonicalizeInstanceName(name)
-		if !strings.HasPrefix(name, g.nodeInstancePrefix) {
-			klog.Warningf("Instance %q does not conform to prefix %q, removing filter", name, g.nodeInstancePrefix)
-			nodeInstancePrefix = ""
-		}
+		escapedInstanceNames = append(escapedInstanceNames, regexp.QuoteMeta(name))
 		found[name] = nil
 	}
+	nameRegex := fmt.Sprintf("^(%s)$", strings.Join(escapedInstanceNames, "|"))
 
 	for _, zone := range g.managedZones {
 		if remaining == 0 {
 			break
 		}
-		instances, err := g.c.Instances().List(ctx, zone, filter.Regexp("name", nodeInstancePrefix+".*"))
+		instances, err := g.c.Instances().List(ctx, zone, filter.Regexp("name", nameRegex))
 		if err != nil {
 			return nil, err
 		}
@@ -480,7 +478,6 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 				break
 			}
 			if _, ok := found[inst.Name]; !ok {
-				extraInstancesFound = append(extraInstancesFound, inst.Name)
 				continue
 			}
 			if found[inst.Name] != nil {
@@ -496,10 +493,6 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 			}
 			remaining--
 		}
-	}
-
-	if len(extraInstancesFound) > 0 {
-		klog.Warningf("Extra instances were listed but then dropped: %v", extraInstancesFound)
 	}
 
 	var ret []*gceInstance
