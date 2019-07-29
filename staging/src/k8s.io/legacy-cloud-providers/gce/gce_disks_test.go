@@ -21,6 +21,7 @@ import (
 
 	"fmt"
 
+	"github.com/stretchr/testify/assert"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -28,10 +29,30 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	cloudprovider "k8s.io/cloud-provider"
+
 )
 
 // TODO TODO write a test for GetDiskByNameUnknownZone and make sure casting logic works
 // TODO TODO verify that RegionDisks.Get does not return non-replica disks
+
+func TestAttachDiskBasic(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	nodeName := "test-node-1"
+	diskName := "disk-1"
+
+	gce, err := fakeGCECloud((DefaultTestClusterValues()))
+	manager := gceServiceManager{
+		gce: gce,
+	}
+	gce.manager = &manager
+
+	_, err := createAndInsertNodes(gce, []string{nodeName}, vals.ZoneName)
+	assert.NoError(t, err)
+
+	assert.NoError(t, gce.CreateDisk(diskName, diskTypeDefault, vals.ZoneName, 8, nil))
+
+	assert.NoError(t, gce.AttachDisk(diskName, nodeName, false, false))
+}
 
 func TestCreateDisk_Basic(t *testing.T) {
 	/* Arrange */
